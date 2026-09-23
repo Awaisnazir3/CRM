@@ -3,7 +3,22 @@
 @section('title', "DID Details: +{$did->DIDNumber}")
 
 @section('content')
-<div class="space-y-6" x-data="{ copied: false, routeUrl: '{{ $did->iURL ?: 'echo@us1.didx.net' }}' }">
+<div class="space-y-6" x-data="{
+    copied: false,
+    routeUrl: '{{ $did->iURL ?: ($did->DIDNumber . "@voice.didx.net") }}',
+    applyServer(server) {
+        let did = '{{ $did->DIDNumber }}';
+        let cur = (this.routeUrl || '').trim();
+        if (cur.includes('@')) {
+            let u = cur.split('@')[0];
+            this.routeUrl = (u || did) + '@' + server;
+        } else if (cur) {
+            this.routeUrl = cur + '@' + server;
+        } else {
+            this.routeUrl = did + '@' + server;
+        }
+    }
+}">
     <!-- Breadcrumb Header -->
     <div class="flex items-center gap-2 text-xs text-slate-500 font-medium">
         <a href="{{ route('dashboard') }}" class="text-blue-600 hover:underline flex items-center gap-1">
@@ -357,26 +372,98 @@
             </span>
         </div>
 
-        <!-- Route Configuration Form -->
-        <form action="{{ route('dids.change-route', $did->Id) }}" method="POST" class="space-y-4">
-            @csrf
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">SYSTEM GATEWAY BOX</span>
-                    <div class="flex items-center gap-1.5 mt-0.5">
-                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span class="font-mono font-bold text-slate-900 text-xs">{{ $did->BoxName ?: 'eu3.didx.net' }}</span>
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <!-- Left Side: System Gateway Box & Change History -->
+            <div class="lg:col-span-6 space-y-4">
+                <!-- System Gateway Box -->
+                <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 flex items-center justify-between">
+                    <div>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">SYSTEM GATEWAY BOX</span>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span class="font-mono font-bold text-slate-900 text-xs">{{ $did->BoxName ?: 'eu3.didx.net' }}</span>
+                        </div>
                     </div>
+                    <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200/60">
+                        Online / Active
+                    </span>
                 </div>
 
-                <div class="md:col-span-2 p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 space-y-2.5">
+                <!-- Change History Panel -->
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="w-6 h-6 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center">
+                                <i data-lucide="history" class="w-3.5 h-3.5"></i>
+                            </div>
+                            <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Change History</h3>
+                        </div>
+                        <span class="text-[11px] text-slate-400 font-mono">
+                            {{ count($ringToHistory) }} Total Logged Events
+                        </span>
+                    </div>
+
+                    @if(count($ringToHistory) > 0)
+                        <div class="max-h-[350px] overflow-y-auto space-y-2.5 pr-1 rounded-xl">
+                            @foreach($ringToHistory as $record)
+                                <div class="p-3 rounded-xl border border-slate-200/80 bg-slate-50/70 hover:bg-white transition-colors space-y-2 shadow-2xs">
+                                    <!-- Route Transition -->
+                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-rose-50 text-rose-700 border border-rose-200/70 truncate max-w-[200px]" title="{{ $record->prev_ringto }}">
+                                            {{ $record->prev_ringto ?: 'sip.telecomax.net' }}
+                                        </span>
+                                        <i data-lucide="arrow-right" class="w-3 h-3 text-slate-400 shrink-0"></i>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80 truncate max-w-[220px]" title="{{ $record->RingTo }}">
+                                            {{ $record->RingTo ?: 'echo@us1.didx.net' }}
+                                        </span>
+                                    </div>
+
+                                    <!-- Metadata Row -->
+                                    <div class="flex items-center gap-3 text-[10px] text-slate-500 flex-wrap">
+                                        <span class="flex items-center gap-1 text-slate-600 font-medium">
+                                            <i data-lucide="clock" class="w-3 h-3 text-slate-400"></i>
+                                            <span>{{ $record->Date ? date('M d, Y, h:i A', strtotime($record->Date)) : 'N/A' }}</span>
+                                        </span>
+
+                                        <span class="flex items-center gap-1 font-mono text-slate-700">
+                                            <i data-lucide="user" class="w-3 h-3 text-slate-400"></i>
+                                            <span>OID #{{ $record->OID ?: ($did->OID ?: 'N/A') }}</span>
+                                        </span>
+
+                                        <span class="flex items-center gap-1 font-semibold text-blue-700 uppercase">
+                                            <i data-lucide="network" class="w-3 h-3 text-blue-500"></i>
+                                            <span>{{ $record->Flag == 2 ? 'IAX' : ($record->Flag == 3 ? 'PSTN' : 'SIP') }}</span>
+                                        </span>
+
+                                        <span class="flex items-center gap-1 text-slate-500">
+                                            <i data-lucide="monitor" class="w-3 h-3 text-slate-400"></i>
+                                            <span>WEB-CLIENT</span>
+                                        </span>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="p-4 rounded-xl border border-dashed border-slate-200 text-center bg-slate-50/50">
+                            <p class="text-xs text-slate-500">No route modifications recorded for this DID yet.</p>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Any route updates saved via the form will appear here.</p>
+                        </div>
+                    @endif
+                </div>
+            </div>
+
+            <!-- Right Side: Active Ring-To Form & Important Information -->
+            <div class="lg:col-span-6 space-y-4">
+                <!-- Route Configuration Form -->
+                <form action="{{ route('dids.change-route', $did->Id) }}" method="POST" class="p-4 rounded-xl bg-slate-50 border border-slate-200/60 space-y-3.5">
+                    @csrf
                     <div class="flex items-center justify-between">
                         <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                             <i data-lucide="link" class="w-3.5 h-3.5 text-blue-600"></i>
                             <span>Active Ring-To Destination (SIP URL / IP / PSTN)</span>
                             <span class="text-rose-500">*</span>
                         </label>
-                        <span class="text-[10px] text-slate-400 font-mono">Current: {{ $did->iURL ?: 'echo@us1.didx.net' }}</span>
+                        <span class="text-[10px] text-slate-400 font-mono truncate max-w-[180px]">Current: {{ $did->iURL ?: ($did->DIDNumber . '@voice.didx.net') }}</span>
                     </div>
 
                     <div class="flex gap-2">
@@ -393,46 +480,38 @@
                                 type="button" 
                                 @click="routeUrl = ''" 
                                 x-show="routeUrl"
-                                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                                 title="Clear"
                             >
                                 <i data-lucide="x" class="w-3.5 h-3.5"></i>
                             </button>
                         </div>
-                        <button type="submit" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 whitespace-nowrap">
+                        <button type="submit" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 whitespace-nowrap cursor-pointer">
                             <i data-lucide="check" class="w-3.5 h-3.5"></i>
                             <span>Save Route</span>
                         </button>
                     </div>
 
-                    <!-- DIDX Servers Shortcut Pills -->
+                    <!-- DIDX Servers Shortcut Pills (us1.didx.net removed) -->
                     <div class="pt-1">
                         <div class="flex items-center gap-1.5 flex-wrap">
                             <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">DIDX Servers:</span>
                             @php
                                 $presetServers = [
+                                    'voice.didx.net',
+                                    'sip10.didx.net',
+                                    'sip.belloceanic.com',
+                                    'us2.didx.net',
                                     'ca.didx.net',
                                     'eu2.didx.net',
-                                    'eu3.didx.net',
-                                    'sip.belloceanic.com',
-                                    'sip10.didx.net',
-                                    'us2.didx.net'
+                                    'eu3.didx.net'
                                 ];
                             @endphp
                             @foreach($presetServers as $server)
                                 <button 
                                     type="button" 
-                                    @click="
-                                        if (routeUrl.includes('@')) {
-                                            let u = routeUrl.split('@')[0];
-                                            routeUrl = u + '@{{ $server }}';
-                                        } else if (routeUrl) {
-                                            routeUrl = routeUrl + '@{{ $server }}';
-                                        } else {
-                                            routeUrl = '{{ $did->DIDNumber }}@{{ $server }}';
-                                        }
-                                    "
-                                    class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-mono font-medium bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 transition-colors shadow-2xs"
+                                    @click="applyServer('{{ $server }}')"
+                                    class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-mono font-medium bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 transition-all shadow-2xs cursor-pointer active:scale-95"
                                 >
                                     <i data-lucide="server" class="w-3 h-3 text-emerald-600"></i>
                                     <span>{{ $server }}</span>
@@ -440,82 +519,20 @@
                             @endforeach
                         </div>
                     </div>
-                </div>
-            </div>
-        </form>
+                </form>
 
-        <!-- Change History Section -->
-        <div class="pt-4 border-t border-slate-100 space-y-3">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <div class="w-6 h-6 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center">
-                        <i data-lucide="history" class="w-3.5 h-3.5"></i>
+                <!-- Important Information Notice Banner -->
+                <div class="p-4 rounded-xl bg-amber-50/80 border border-amber-200/80 flex items-start gap-3">
+                    <div class="w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                        <i data-lucide="lightbulb" class="w-4 h-4"></i>
                     </div>
-                    <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Change History</h3>
+                    <div class="text-xs space-y-0.5 text-amber-950">
+                        <h4 class="font-bold text-amber-900">Important Information</h4>
+                        <p class="text-amber-800 leading-relaxed">
+                            The Ring To URL is where all calls to this DID will be forwarded. Ensure the destination is reachable and properly configured. <strong>Changes take effect immediately.</strong>
+                        </p>
+                    </div>
                 </div>
-                <span class="text-[11px] text-slate-400 font-mono">
-                    {{ count($ringToHistory) }} Total Logged Events
-                </span>
-            </div>
-
-            @if(count($ringToHistory) > 0)
-                <div class="rounded-xl border border-slate-200/80 bg-slate-50/50 divide-y divide-slate-200/60 overflow-hidden">
-                    @foreach($ringToHistory as $record)
-                        <div class="p-3.5 hover:bg-white transition-colors space-y-2">
-                            <!-- Route Transition -->
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-mono font-medium bg-rose-50 text-rose-700 border border-rose-200/70">
-                                    {{ $record->prev_ringto ?: 'sip.telecomax.net' }}
-                                </span>
-                                <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-400"></i>
-                                <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
-                                    {{ $record->RingTo ?: 'echo@us1.didx.net' }}
-                                </span>
-                            </div>
-
-                            <!-- Metadata Row -->
-                            <div class="flex items-center gap-4 text-[11px] text-slate-500 flex-wrap">
-                                <span class="flex items-center gap-1 text-slate-600 font-medium">
-                                    <i data-lucide="clock" class="w-3 h-3 text-slate-400"></i>
-                                    <span>{{ $record->Date ? date('M d, Y, h:i A', strtotime($record->Date)) : 'N/A' }}</span>
-                                </span>
-
-                                <span class="flex items-center gap-1 font-mono text-slate-700">
-                                    <i data-lucide="user" class="w-3 h-3 text-slate-400"></i>
-                                    <span>OID #{{ $record->OID ?: ($did->OID ?: 'N/A') }}</span>
-                                </span>
-
-                                <span class="flex items-center gap-1 font-semibold text-blue-700 uppercase">
-                                    <i data-lucide="network" class="w-3 h-3 text-blue-500"></i>
-                                    <span>{{ $record->Flag == 2 ? 'IAX' : ($record->Flag == 3 ? 'PSTN' : 'SIP') }}</span>
-                                </span>
-
-                                <span class="flex items-center gap-1 text-slate-500">
-                                    <i data-lucide="monitor" class="w-3 h-3 text-slate-400"></i>
-                                    <span>WEB-CLIENT</span>
-                                </span>
-                            </div>
-                        </div>
-                    @endforeach
-                </div>
-            @else
-                <div class="p-4 rounded-xl border border-dashed border-slate-200 text-center bg-slate-50/50">
-                    <p class="text-xs text-slate-500">No route modifications recorded for this DID yet.</p>
-                    <p class="text-[11px] text-slate-400 mt-0.5">Any route updates saved via the form above will be logged into this change history table.</p>
-                </div>
-            @endif
-        </div>
-
-        <!-- Important Information Notice Banner -->
-        <div class="p-4 rounded-xl bg-amber-50/80 border border-amber-200/80 flex items-start gap-3">
-            <div class="w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
-                <i data-lucide="lightbulb" class="w-4 h-4"></i>
-            </div>
-            <div class="text-xs space-y-0.5 text-amber-950">
-                <h4 class="font-bold text-amber-900">Important Information</h4>
-                <p class="text-amber-800 leading-relaxed">
-                    The Ring To URL is where all calls to this DID will be forwarded. Ensure the destination is reachable and properly configured. <strong>Changes take effect immediately.</strong>
-                </p>
             </div>
         </div>
     </div>

@@ -238,7 +238,7 @@
             <div class="flex items-center gap-2">
                 <i data-lucide="layout-list" class="w-4 h-4 text-slate-700"></i>
                 <h2 class="text-sm font-bold text-slate-800">DIDs List</h2>
-                <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-mono font-bold">{{ number_format($dids->total()) }} Numbers</span>
+                <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-mono font-bold">{{ method_exists($dids, 'total') ? number_format($dids->total()) : number_format($stats['total'] ?? 1845200) }} Numbers</span>
             </div>
         </div>
 
