@@ -373,10 +373,26 @@ class DidController extends Controller
             ->limit(10)
             ->get();
 
+        // Ring-To change history from AlterRingTo table
+        $ringToHistory = DB::table('AlterRingTo')
+            ->where('DID', $did->DIDNumber)
+            ->orWhere('DID', $did->Id)
+            ->orderBy('Date', 'desc')
+            ->limit(30)
+            ->get();
+
+        // Map consecutive route transitions for visualization
+        for ($i = 0; $i < count($ringToHistory); $i++) {
+            $olderItem = $ringToHistory[$i + 1] ?? null;
+            $ringToHistory[$i]->prev_ringto = ($olderItem && $olderItem->RingTo) 
+                ? $olderItem->RingTo 
+                : ($did->BoxName ? $did->BoxName : 'sip.telecomax.net');
+        }
+
         $option = DidOption::where('didid', $did->DIDNumber)->first();
         $vendor = $did->GroupVendor ? Vendor::where('vendorid', $did->GroupVendor)->first() : null;
 
-        return view('dids.show', compact('did', 'history', 'recentCalls', 'option', 'vendor'));
+        return view('dids.show', compact('did', 'history', 'recentCalls', 'ringToHistory', 'option', 'vendor'));
     }
 
     /**

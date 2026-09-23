@@ -343,8 +343,9 @@
     </div>
 
     <!-- Section 6: Technical Information & Active Routing -->
-    <div id="routing" class="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-xs space-y-4">
-        <div class="flex items-center justify-between pb-4 mb-2 border-b border-slate-100">
+    <div id="routing" class="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-xs space-y-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between pb-4 border-b border-slate-100">
             <div class="flex items-center gap-2">
                 <div class="w-7 h-7 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center">
                     <i data-lucide="server" class="w-4 h-4"></i>
@@ -356,6 +357,7 @@
             </span>
         </div>
 
+        <!-- Route Configuration Form -->
         <form action="{{ route('dids.change-route', $did->Id) }}" method="POST" class="space-y-4">
             @csrf
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -367,26 +369,155 @@
                     </div>
                 </div>
 
-                <div class="md:col-span-2 p-3.5 rounded-xl bg-slate-50 border border-slate-200/60">
-                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                        ACTIVE RING-TO DESTINATION (SIP URL / IP / PSTN)
-                    </label>
-                    <div class="flex gap-2 mt-0.5">
-                        <input 
-                            type="text" 
-                            name="RingTo" 
-                            x-model="routeUrl"
-                            placeholder="e.g. echo@us1.didx.net or 442070431665@sip.telecomax.net" 
-                            class="flex-1 px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-mono focus:outline-none focus:border-blue-500"
-                        >
-                        <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 whitespace-nowrap">
+                <div class="md:col-span-2 p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                            <i data-lucide="link" class="w-3.5 h-3.5 text-blue-600"></i>
+                            <span>Active Ring-To Destination (SIP URL / IP / PSTN)</span>
+                            <span class="text-rose-500">*</span>
+                        </label>
+                        <span class="text-[10px] text-slate-400 font-mono">Current: {{ $did->iURL ?: 'echo@us1.didx.net' }}</span>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <div class="relative flex-1">
+                            <input 
+                                type="text" 
+                                name="RingTo" 
+                                x-model="routeUrl"
+                                placeholder="e.g. 442070431665@sip.telecomax.net" 
+                                class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                                required
+                            >
+                            <button 
+                                type="button" 
+                                @click="routeUrl = ''" 
+                                x-show="routeUrl"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                title="Clear"
+                            >
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                        <button type="submit" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 whitespace-nowrap">
                             <i data-lucide="check" class="w-3.5 h-3.5"></i>
                             <span>Save Route</span>
                         </button>
                     </div>
+
+                    <!-- DIDX Servers Shortcut Pills -->
+                    <div class="pt-1">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">DIDX Servers:</span>
+                            @php
+                                $presetServers = [
+                                    'ca.didx.net',
+                                    'eu2.didx.net',
+                                    'eu3.didx.net',
+                                    'sip.belloceanic.com',
+                                    'sip10.didx.net',
+                                    'us2.didx.net'
+                                ];
+                            @endphp
+                            @foreach($presetServers as $server)
+                                <button 
+                                    type="button" 
+                                    @click="
+                                        if (routeUrl.includes('@')) {
+                                            let u = routeUrl.split('@')[0];
+                                            routeUrl = u + '@{{ $server }}';
+                                        } else if (routeUrl) {
+                                            routeUrl = routeUrl + '@{{ $server }}';
+                                        } else {
+                                            routeUrl = '{{ $did->DIDNumber }}@{{ $server }}';
+                                        }
+                                    "
+                                    class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-mono font-medium bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 transition-colors shadow-2xs"
+                                >
+                                    <i data-lucide="server" class="w-3 h-3 text-emerald-600"></i>
+                                    <span>{{ $server }}</span>
+                                </button>
+                            @endforeach
+                        </div>
+                    </div>
                 </div>
             </div>
         </form>
+
+        <!-- Change History Section -->
+        <div class="pt-4 border-t border-slate-100 space-y-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center">
+                        <i data-lucide="history" class="w-3.5 h-3.5"></i>
+                    </div>
+                    <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Change History</h3>
+                </div>
+                <span class="text-[11px] text-slate-400 font-mono">
+                    {{ count($ringToHistory) }} Total Logged Events
+                </span>
+            </div>
+
+            @if(count($ringToHistory) > 0)
+                <div class="rounded-xl border border-slate-200/80 bg-slate-50/50 divide-y divide-slate-200/60 overflow-hidden">
+                    @foreach($ringToHistory as $record)
+                        <div class="p-3.5 hover:bg-white transition-colors space-y-2">
+                            <!-- Route Transition -->
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-mono font-medium bg-rose-50 text-rose-700 border border-rose-200/70">
+                                    {{ $record->prev_ringto ?: 'sip.telecomax.net' }}
+                                </span>
+                                <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-400"></i>
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+                                    {{ $record->RingTo ?: 'echo@us1.didx.net' }}
+                                </span>
+                            </div>
+
+                            <!-- Metadata Row -->
+                            <div class="flex items-center gap-4 text-[11px] text-slate-500 flex-wrap">
+                                <span class="flex items-center gap-1 text-slate-600 font-medium">
+                                    <i data-lucide="clock" class="w-3 h-3 text-slate-400"></i>
+                                    <span>{{ $record->Date ? date('M d, Y, h:i A', strtotime($record->Date)) : 'N/A' }}</span>
+                                </span>
+
+                                <span class="flex items-center gap-1 font-mono text-slate-700">
+                                    <i data-lucide="user" class="w-3 h-3 text-slate-400"></i>
+                                    <span>OID #{{ $record->OID ?: ($did->OID ?: 'N/A') }}</span>
+                                </span>
+
+                                <span class="flex items-center gap-1 font-semibold text-blue-700 uppercase">
+                                    <i data-lucide="network" class="w-3 h-3 text-blue-500"></i>
+                                    <span>{{ $record->Flag == 2 ? 'IAX' : ($record->Flag == 3 ? 'PSTN' : 'SIP') }}</span>
+                                </span>
+
+                                <span class="flex items-center gap-1 text-slate-500">
+                                    <i data-lucide="monitor" class="w-3 h-3 text-slate-400"></i>
+                                    <span>WEB-CLIENT</span>
+                                </span>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @else
+                <div class="p-4 rounded-xl border border-dashed border-slate-200 text-center bg-slate-50/50">
+                    <p class="text-xs text-slate-500">No route modifications recorded for this DID yet.</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Any route updates saved via the form above will be logged into this change history table.</p>
+                </div>
+            @endif
+        </div>
+
+        <!-- Important Information Notice Banner -->
+        <div class="p-4 rounded-xl bg-amber-50/80 border border-amber-200/80 flex items-start gap-3">
+            <div class="w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                <i data-lucide="lightbulb" class="w-4 h-4"></i>
+            </div>
+            <div class="text-xs space-y-0.5 text-amber-950">
+                <h4 class="font-bold text-amber-900">Important Information</h4>
+                <p class="text-amber-800 leading-relaxed">
+                    The Ring To URL is where all calls to this DID will be forwarded. Ensure the destination is reachable and properly configured. <strong>Changes take effect immediately.</strong>
+                </p>
+            </div>
+        </div>
     </div>
 
     <!-- Section 7: Testing Information & Diagnostics -->
