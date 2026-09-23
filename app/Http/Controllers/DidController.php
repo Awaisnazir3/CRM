@@ -17,25 +17,66 @@ class DidController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Did::query();
+        $search = $request->input('search_did', $request->input('search'));
+        $country = $request->input('country');
+        $statusVal = $request->input('status');
+        $fromDate = $request->input('from_date');
+        $toDate = $request->input('to_date');
+        $vendor = $request->input('vendor');
+        $vendorUid = $request->input('vendor_uid');
+        $oid = $request->input('oid');
+
+        // Fast-path: When searching directly by DID or ID in header/search without complex filters
+        if ($search && !$country && (!$statusVal || $statusVal === 'all') && !$fromDate && !$toDate && !$vendor && !$vendorUid && !$oid) {
+            $cleanNumber = preg_replace('/[^0-9]/', '', $search);
+
+            if ($cleanNumber) {
+                // 1. Direct indexed lookup for exact DID Number or DID Id -> Instant redirect to Details view
+                $exactDid = Did::where('DIDNumber', $cleanNumber)->orWhere('Id', $cleanNumber)->first(['Id', 'DIDNumber']);
+                if ($exactDid) {
+                    return redirect()->route('dids.show', $exactDid->Id);
+                }
+
+                // 2. Direct exact match by Order ID
+                $order = \App\Models\Order::where('OID', $cleanNumber)->first(['OID']);
+                if ($order) {
+                    return redirect()->route('orders.show', $order->OID);
+                }
+            }
+        }
+
+        $query = Did::query()->select([
+            'Id', 'DIDNumber', 'CountryN', 'CountryCd', 'City', 'StateName', 'AreaID',
+            'Status', 'MonthlyCharges', 'SetupCost', 'PerMinuteCharges', 'OID',
+            'GroupVendor', 'OfferDate', 'SuspendDID', 'NeedDocs', 'UnderCheck', 'VendorUID'
+        ]);
 
         // 1. Filter by DID Number
-        if ($searchDid = $request->input('search_did', $request->input('search'))) {
-            $query->where('DIDNumber', 'LIKE', "%{$searchDid}%");
+        if ($search) {
+            $cleanNumber = preg_replace('/[^0-9]/', '', $search);
+            if ($cleanNumber && strlen($cleanNumber) >= 3) {
+                // Indexed prefix search
+                $query->where('DIDNumber', 'LIKE', "{$cleanNumber}%");
+            } else {
+                $query->where(function ($q) use ($search) {
+                    $q->where('DIDNumber', 'LIKE', "{$search}%")
+                      ->orWhere('City', 'LIKE', "{$search}%")
+                      ->orWhere('CountryN', 'LIKE', "{$search}%");
+                });
+            }
         }
 
         // 2. Filter by Country
-        if ($country = $request->input('country')) {
+        if ($country) {
             $query->where(function ($q) use ($country) {
-                $q->where('CountryN', 'LIKE', "%{$country}%")
+                $q->where('CountryN', $country)
                   ->orWhere('AreaID', $country)
                   ->orWhere('CountryCd', $country);
             });
         }
 
         // 3. Filter by Status
-        if ($request->has('status') && $request->input('status') !== '' && $request->input('status') !== 'all') {
-            $statusVal = $request->input('status');
+        if ($request->has('status') && $statusVal !== '' && $statusVal !== 'all') {
             if ($statusVal === 'sold') {
                 $query->whereIn('Status', [1, 2]);
             } elseif ($statusVal === 'available') {
@@ -49,28 +90,26 @@ class DidController extends Controller
             }
         }
 
-        // 4. Filter by Date Range (From Date / To Date)
-        if ($fromDate = $request->input('from_date')) {
+        // 4. Filter by Date Range
+        if ($fromDate) {
             $query->where('OfferDate', '>=', $fromDate);
         }
-        if ($toDate = $request->input('to_date')) {
+        if ($toDate) {
             $query->where('OfferDate', '<=', $toDate . ' 23:59:59');
         }
 
         // 5. Filter by Vendor
-        if ($vendor = $request->input('vendor')) {
-            if ($vendor !== 'all') {
-                $query->where('GroupVendor', $vendor);
-            }
+        if ($vendor && $vendor !== 'all') {
+            $query->where('GroupVendor', $vendor);
         }
 
         // 6. Filter by Vendor User ID
-        if ($vendorUid = $request->input('vendor_uid')) {
+        if ($vendorUid) {
             $query->where('GroupVendor', $vendorUid);
         }
 
         // 7. Filter by Buyer OID
-        if ($oid = $request->input('oid')) {
+        if ($oid) {
             $query->where('OID', $oid);
         }
 
@@ -82,23 +121,38 @@ class DidController extends Controller
 
         $dids = $query->orderBy('Id', 'desc')->paginate($perPage)->withQueryString();
 
-        // 5 Summary Stat Cards matching Screenshot 1
-        $totalDids = Did::count();
-        $soldCount = Did::whereIn('Status', [1, 2])->orWhere('OID', '>', 0)->count();
-        $suspendedCount = Did::where('SuspendDID', 1)->orWhere('Status', 3)->count();
-        $availableCount = Did::where('Status', 0)->where('SuspendDID', 0)->count();
-        $agingCount = Did::where('Status', 0)->where('OfferDate', '<', now()->subDays(90))->count();
+        // 5 Summary Stat Cards - single cached query
+        $stats = \Illuminate\Support\Facades\Cache::remember('dids_stats_summary', 120, function () {
+            try {
+                $row = DB::table('DIDS')
+                    ->selectRaw('
+                        COUNT(*) as total,
+                        SUM(CASE WHEN Status IN (1, 2) OR OID > 0 THEN 1 ELSE 0 END) as sold,
+                        SUM(CASE WHEN SuspendDID = 1 OR Status = 3 THEN 1 ELSE 0 END) as suspended,
+                        SUM(CASE WHEN Status = 0 AND (SuspendDID = 0 OR SuspendDID IS NULL) THEN 1 ELSE 0 END) as available,
+                        SUM(CASE WHEN Status = 0 AND OfferDate < DATE_SUB(NOW(), INTERVAL 90 DAY) THEN 1 ELSE 0 END) as aging
+                    ')
+                    ->first();
 
-        $stats = [
-            'total' => $totalDids,
-            'sold' => $soldCount,
-            'suspended' => $suspendedCount,
-            'available' => $availableCount,
-            'aging' => $agingCount,
-        ];
+                return [
+                    'total' => (int) ($row->total ?? 0),
+                    'sold' => (int) ($row->sold ?? 0),
+                    'suspended' => (int) ($row->suspended ?? 0),
+                    'available' => (int) ($row->available ?? 0),
+                    'aging' => (int) ($row->aging ?? 0),
+                ];
+            } catch (\Throwable $e) {
+                return ['total' => 0, 'sold' => 0, 'suspended' => 0, 'available' => 0, 'aging' => 0];
+            }
+        });
 
-        $countries = Country::orderBy('CountryName', 'asc')->get();
-        $vendors = Vendor::orderBy('vendorname', 'asc')->get();
+        $countries = \Illuminate\Support\Facades\Cache::remember('all_countries_sorted', 3600, function () {
+            return Country::orderBy('CountryName', 'asc')->get();
+        });
+
+        $vendors = \Illuminate\Support\Facades\Cache::remember('all_vendors_sorted', 3600, function () {
+            return Vendor::orderBy('vendorname', 'asc')->get();
+        });
 
         return view('dids.index', compact('dids', 'stats', 'countries', 'vendors', 'perPage'));
     }
@@ -304,10 +358,23 @@ class DidController extends Controller
     public function show($id)
     {
         $did = Did::with(['customer', 'option'])->where('Id', $id)->orWhere('DIDNumber', $id)->firstOrFail();
-        $history = DB::table('BuyHistory')->where('DIDNumber', $did->DIDNumber)->orderBy('Date', 'desc')->limit(20)->get();
-        $recentCalls = DB::table('cdrs_new')->where('callednum', 'LIKE', "%{$did->DIDNumber}%")->orWhere('callerid', 'LIKE', "%{$did->DIDNumber}%")->orderBy('id', 'desc')->limit(10)->get();
+        
+        $history = DB::table('BuyHistory')
+            ->where('DIDNumber', $did->DIDNumber)
+            ->orderBy('Date', 'desc')
+            ->limit(20)
+            ->get();
+
+        // Exact match queries with limit to leverage indexes and avoid full table scan
+        $recentCalls = DB::table('cdrs_new')
+            ->where('callednum', $did->DIDNumber)
+            ->orWhere('callerid', $did->DIDNumber)
+            ->orderBy('id', 'desc')
+            ->limit(10)
+            ->get();
+
         $option = DidOption::where('didid', $did->DIDNumber)->first();
-        $vendor = Vendor::where('vendorid', $did->GroupVendor)->first();
+        $vendor = $did->GroupVendor ? Vendor::where('vendorid', $did->GroupVendor)->first() : null;
 
         return view('dids.show', compact('did', 'history', 'recentCalls', 'option', 'vendor'));
     }

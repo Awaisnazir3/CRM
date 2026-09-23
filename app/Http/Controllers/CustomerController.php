@@ -18,18 +18,28 @@ class CustomerController extends Controller
 {
     public function index(Request $request)
     {
+        if ($search = $request->input('search')) {
+            $cleanNumber = preg_replace('/[^0-9]/', '', $search);
+
+            // Direct match lookup for instant redirect
+            if ($cleanNumber) {
+                $exactCustomer = Customer::where('CustomerID', $cleanNumber)->orWhere('UID', $cleanNumber)->first();
+                if ($exactCustomer) {
+                    return redirect()->route('customers.show', $exactCustomer->UID);
+                }
+            }
+        }
+
         $query = Customer::with('address');
 
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
-                $q->where('CFName', 'LIKE', "%{$search}%")
-                  ->orWhere('CLName', 'LIKE', "%{$search}%")
+                $q->where('CFName', 'LIKE', "{$search}%")
+                  ->orWhere('CLName', 'LIKE', "{$search}%")
                   ->orWhere('CEmail', 'LIKE', "%{$search}%")
                   ->orWhere('CCompany', 'LIKE', "%{$search}%")
-                  ->orWhere('UID', 'LIKE', "%{$search}%")
-                  ->orWhere('CustomerID', 'LIKE', "%{$search}%")
-                  ->orWhere('CTelOff', 'LIKE', "%{$search}%")
-                  ->orWhere('CCell', 'LIKE', "%{$search}%");
+                  ->orWhere('UID', 'LIKE', "{$search}%")
+                  ->orWhere('CustomerID', 'LIKE', "{$search}%");
             });
         }
 
